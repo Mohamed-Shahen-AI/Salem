@@ -29,7 +29,8 @@ Salem/
 │   └── models/
 │       ├── __init__.py
 │       └── schemas.py           # Pydantic request/response models
-├── .env                         # GEMINI_API_KEY goes here
+├── .env                         # Environment variables (create from .env.example)
+├── .env.example                 # Example environment variables file
 ├── requirements.txt
 └── README.md
 ```
@@ -46,7 +47,8 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
 # 3. Add your Gemini key to .env
-echo "GEMINI_API_KEY=AIzaSy..." > .env
+cp .env.example .env
+# Edit .env and replace your_gemini_api_key_here with your actual key
 
 # 4. Run the dev server
 .venv/bin/uvicorn app.main:app --reload --port 3000
