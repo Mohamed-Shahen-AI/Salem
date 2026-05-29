@@ -1,6 +1,6 @@
 # Quran Voice Command API (Salem)
 
-A FastAPI service that parses Arabic and English voice commands into structured Quran app actions using **Gemini 3.5 Flash**.
+A FastAPI service that parses Arabic and English voice commands into structured Quran app actions using **Gemini 1.5 Flash**.
 
 ---
 
@@ -9,10 +9,11 @@ A FastAPI service that parses Arabic and English voice commands into structured 
 | Layer | Tool |
 |-------|------|
 | Framework | FastAPI |
-| LLM | Google `gemini-3.5-flash` |
+| LLM | Google `gemini-1.5-flash` |
 | Server | Uvicorn (ASGI) |
 | Env vars | python-dotenv |
 | Validation | Pydantic v2 |
+| Rate limiting | slowapi |
 
 ---
 
@@ -22,7 +23,7 @@ A FastAPI service that parses Arabic and English voice commands into structured 
 Salem/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                  # FastAPI app + routes
+│   ├── main.py                  # FastAPI app + routes + middleware
 │   ├── services/
 │   │   ├── __init__.py
 │   │   └── intent_parser.py     # Gemini call + system prompt
@@ -123,3 +124,19 @@ Returns `{ "status": "ok" }`.
 | `انتقل إلى صفحة 50` | `navigation` → page 50 |
 | `غيّر القارئ إلى مشاري` | `switch_reciter` → reciter_id 2 |
 | `الوضع الداكن` | `switch_theme` → dark |
+
+---
+
+## Security & Validation
+
+| Layer | What is enforced |
+|-------|-----------------|
+| **Input length** | `text` must be 1–500 characters |
+| **Text content check** | Input must contain at least one letter (Latin, Arabic, or any Unicode script). Rejects digits-only, symbols-only, and binary/non-printable characters |
+| **Rate limiting** | 30 requests/min per IP on `POST /api/command`; 60 requests/min globally |
+| **CORS** | Only allowed origins can call the API from a browser (configure `allow_origins` in `main.py` before deploying to production) |
+| **Output validation** | `action` is constrained to known values; `confidence` must be 0.0–1.0; `detected_language` must be `"ar"` or `"en"` |
+| **Prompt injection mitigation** | User content is passed separately from the system prompt in the Gemini API call |
+| **Error handling** | JSON decode errors return a graceful fallback; Gemini API failures return `503`; unhandled exceptions return `500` without leaking stack traces |
+| **Startup guard** | Server refuses to start if `GEMINI_API_KEY` is missing or empty |
+| **Logging** | All requests and errors are logged with timestamp, level, IP, and action |
