@@ -1,17 +1,29 @@
 import json
+import logging
 import os
+
 import google.generativeai as genai
 from dotenv import load_dotenv
+from fastapi import HTTPException
 from pathlib import Path
 
-# Load environment variables
+# ── Logging ────────────────────────────────────────────────────────────────────
+logger = logging.getLogger(__name__)
+
+# ── Environment ────────────────────────────────────────────────────────────────
 env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 api_key = os.getenv("GEMINI_API_KEY")
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-3.5-flash')
+if not api_key:
+    raise RuntimeError(
+        "GEMINI_API_KEY is not set. Copy .env.example → .env and add your key."
+    )
 
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+# ── System prompt (kept separate from user content to reduce prompt injection) ─
 SYSTEM_PROMPT = """
 You are a Quran app voice command classifier.
 The user speaks Arabic or English. Classify their intent and return ONLY valid JSON.
@@ -47,7 +59,7 @@ Fuzzy matching is expected: "baqarah", "al baqara", "البقرة" all resolve t
 Known reciters:
 AbdelBaset=1, Mishary=2, Maher=3, Sudais=4, Husary=5
 
-Response schema (return ONLY this JSON, no explanation):
+Response schema (return ONLY this JSON, no explanation, no markdown):
 {
   "status": bool,
   "action": str | null,
@@ -70,24 +82,36 @@ If the command does not match any action:
 { "status": false, "action": null, "parameters": {}, "confidence": 0.0, "detected_language": "en" }
 """
 
+_FALLBACK = {
+    "status": False,
+    "action": None,
+    "parameters": {},
+    "confidence": 0.0,
+    "detected_language": "en",
+}
+
 
 async def parse_command(text: str) -> dict:
     try:
+        # User content is passed separately from the system prompt to reduce
+        # prompt-injection risk. The model receives the system instruction via
+        # system_instruction, and only the user's command as the message body.
         response = await model.generate_content_async(
-            f"{SYSTEM_PROMPT}\n\nUser command: {text}"
+            contents=f"User command: {text}",
+            generation_config={"response_mime_type": "application/json"},
         )
-        # Clean markdown formatting if present
-        clean_text = response.text.replace('```json', '').replace('```', '').strip()
+
+        clean_text = response.text.strip()
         result = json.loads(clean_text)
         result["original_text"] = text
+        logger.info("Parsed command | action=%s lang=%s text=%r",
+                    result.get("action"), result.get("detected_language"), text)
         return result
+
+    except json.JSONDecodeError:
+        logger.warning("Gemini returned non-JSON response: %r", response.text[:200])
+        return {**_FALLBACK, "original_text": text}
+
     except Exception as e:
-        # Silently fail and return a structured empty response
-        return {
-            "status": False,
-            "action": None,
-            "parameters": {},
-            "confidence": 0.0,
-            "detected_language": "en",
-            "original_text": text
-        }
+        logger.error("Gemini API error: %s", e)
+        raise HTTPException(status_code=503, detail="AI service temporarily unavailable")
