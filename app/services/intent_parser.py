@@ -2,7 +2,8 @@ import json
 import logging
 import os
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from pathlib import Path
@@ -20,8 +21,8 @@ if not api_key:
         "GEMINI_API_KEY is not set. Copy .env.example → .env and add your key."
     )
 
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=api_key)
+
 
 # ── System prompt (kept separate from user content to reduce prompt injection) ─
 SYSTEM_PROMPT = """
@@ -90,15 +91,23 @@ _FALLBACK = {
     "detected_language": "en",
 }
 
+MODEL_NAME = "gemini-2.5-flash"
+
+_CONFIG = types.GenerateContentConfig(
+    system_instruction=SYSTEM_PROMPT,
+    response_mime_type="application/json",
+)
+
 
 async def parse_command(text: str) -> dict:
     try:
         # User content is passed separately from the system prompt to reduce
         # prompt-injection risk. The model receives the system instruction via
         # system_instruction, and only the user's command as the message body.
-        response = await model.generate_content_async(
+        response = await client.aio.models.generate_content(
+            model=MODEL_NAME,
             contents=f"User command: {text}",
-            generation_config={"response_mime_type": "application/json"},
+            config=_CONFIG,
         )
 
         clean_text = response.text.strip()
@@ -113,5 +122,5 @@ async def parse_command(text: str) -> dict:
         return {**_FALLBACK, "original_text": text}
 
     except Exception as e:
-        logger.error("Gemini API error: %s", e)
-        raise HTTPException(status_code=503, detail="AI service temporarily unavailable")
+        logger.error("Gemini API error (%s): %s", type(e).__name__, e)
+        raise HTTPException(status_code=503, detail=f"AI service error: {type(e).__name__}: {e}")
