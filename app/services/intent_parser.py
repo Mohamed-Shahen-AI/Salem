@@ -60,7 +60,57 @@ Fuzzy matching is expected: "baqarah", "al baqara", "البقرة" all resolve t
 Known reciters:
 AbdelBaset=1, Mishary=2, Maher=3, Sudais=4, Husary=5
 
-Response schema (return ONLY this JSON, no explanation, no markdown):
+━━━ ACTION SELECTION RULES (follow strictly) ━━━
+
+1. "audio_range"  → user mentions TWO verse numbers forming a range.
+   Trigger words: "from verse X to Y", "verses X to Y", "ayat X to Y",
+                  "من آية X إلى Y", "من الآية X حتى Y"
+   Parameters: surah_number, start_verse, end_verse
+
+2. "audio_verse"  → user mentions EXACTLY ONE verse/ayah number.
+   Trigger words: "verse X", "ayah X", "آية X", "الآية X"
+   Parameters: surah_number, verse_number
+
+3. "audio_surah"  → user wants a whole surah with NO verse numbers mentioned.
+   Trigger words: "play surah X", "اقرأ سورة X", "افتح سورة X"
+   Parameters: surah_number
+
+   ⚠ IMPORTANT: If the request contains ANY verse numbers (even alongside a surah name),
+   do NOT use audio_surah. Use audio_range or audio_verse instead.
+
+4. "navigation"   → user wants to go to a page or surah in the mushaf.
+   Parameters: { "page": int } OR { "surah_number": int }
+
+5. "switch_theme"   → { "mode": "light" | "dark" }
+6. "switch_reciter" → { "reciter_id": int }
+7. "repeat_verse"   → { "count": int }
+8. "bookmark_verse" → { "surah_number": int, "verse_number": int }
+
+━━━ FEW-SHOT EXAMPLES ━━━
+
+Input: "play surah al-fatiha"
+Output: {"status": true, "action": "audio_surah", "parameters": {"surah_number": 1}, "confidence": 1.0, "detected_language": "en"}
+
+Input: "play verse 5 of al-baqara"
+Output: {"status": true, "action": "audio_verse", "parameters": {"surah_number": 2, "verse_number": 5}, "confidence": 1.0, "detected_language": "en"}
+
+Input: "play verses 1 to 7 from surah al fatiha"
+Output: {"status": true, "action": "audio_range", "parameters": {"surah_number": 1, "start_verse": 1, "end_verse": 7}, "confidence": 1.0, "detected_language": "en"}
+
+Input: "play from ayah 255 to 257 of al-baqara"
+Output: {"status": true, "action": "audio_range", "parameters": {"surah_number": 2, "start_verse": 255, "end_verse": 257}, "confidence": 1.0, "detected_language": "en"}
+
+Input: "اقرأ من الآية 1 إلى الآية 7 من سورة الفاتحة"
+Output: {"status": true, "action": "audio_range", "parameters": {"surah_number": 1, "start_verse": 1, "end_verse": 7}, "confidence": 1.0, "detected_language": "ar"}
+
+Input: "switch to dark mode"
+Output: {"status": true, "action": "switch_theme", "parameters": {"mode": "dark"}, "confidence": 1.0, "detected_language": "en"}
+
+Input: "hello"
+Output: {"status": false, "action": null, "parameters": {}, "confidence": 0.0, "detected_language": "en"}
+
+━━━ RESPONSE SCHEMA ━━━
+Return ONLY this JSON, no explanation, no markdown:
 {
   "status": bool,
   "action": str | null,
